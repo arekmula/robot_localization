@@ -35,11 +35,30 @@ class LocAgent:
         # previous action
         self.prev_action = None
 
+        # neighbours of each location (North, East, South, West)
+        self.neighbours = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+
+        # possible directions of robot
+        self.directions = ['N', 'E', 'S', 'W']
+
+        # starting direction of robot
+        self.dir = None
+
+        # Transition Factor for each location.
+        self.T = np.zeros((len(self.locations), len(self.locations)), float)
+        np.fill_diagonal(self.T, 1)  # fill diagonal with initial probabilty that robot is there
+
+        # Sensor factor for each location. Each location contains four possible directions
+        self.sensor = np.ones((len(self.locations), 4, 1), float)
+
+
         self.P = None
 
     def __call__(self, percept):
         # update posterior
         # TODO PUT YOUR CODE HERE
+
+        self.updateSensorFactor(percept)
 
 
         # -----------------------
@@ -57,6 +76,52 @@ class LocAgent:
         self.prev_action = action
 
         return action
+
+
+    def updateSensorFactor(self, percept):
+        self.sensor[self.sensor>0] = 1
+        # print(self.sensor)
+
+        for loc_idx, loc in enumerate(self.locations):  # loop over each location
+
+            if 'fwd' in percept:  # check if there was forward in percept
+
+                for dir_idx, neigh in enumerate(self.neighbours):  # loop over each neighbour of current location
+                    if (loc[0] + neigh[0], loc[1] + neigh[1]) not in self.locations:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                    else:   # if there's no wall on North and wall wasn't detected by percept
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+
+            if 'bckwd' in percept:  # check if there was backward in percept
+
+                for dir_idx, neigh in enumerate(self.neighbours):  # loop over each neighbour of current location
+                    if (loc[0] + neigh[0], loc[1] + neigh[1]) not in self.locations:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                    else:   # if there's no wall on North and wall wasn't detected by percept
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+
+            if 'left' in percept:  # check if there was left in percept
+
+                for dir_idx, neigh in enumerate(self.neighbours):  # loop over each neighbour of current location
+                    if (loc[0] + neigh[0], loc[1] + neigh[1]) not in self.locations:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                    else:   # if there's no wall on North and wall wasn't detected by percept
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+
+
+
+            if 'right' in percept:  # check if there was right in percept
+
+                for dir_idx, neigh in enumerate(self.neighbours):  # loop over each neighbour of current location
+                    if (loc[0] + neigh[0], loc[1] + neigh[1]) not in self.locations:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                    else:   # if there's no wall on North and wall wasn't detected by percept
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+
+        print(self.sensor)
+
+
+
 
     def getPosterior(self):
         # directions in order 'N', 'E', 'S', 'W'
