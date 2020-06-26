@@ -228,7 +228,7 @@ def main():
         P = agent.getPosterior()
 
         # print('Percept: ', percept)
-        print('Action ', action)
+        # print('Action ', action)
 
         view.update(env, P)
         update(rate)

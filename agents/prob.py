@@ -45,8 +45,6 @@ class LocAgent:
         # forward neighbour for each direction (N, E, S, W)
         self.forward_neighbours = [(0, 1), (1, 0), (0, -1), (-1, 0)]
 
-
-
         # starting direction of robot
         self.dir = None
 
@@ -64,7 +62,7 @@ class LocAgent:
         np.fill_diagonal(self.D, 1)  # fill diagonal with initial probabilty that robot has this direction
 
         # Sensor factor for each location. Each location contains four possible directions
-        self.sensor = np.ones((len(self.locations), len(self.directions), 1), float)
+        self.sensor = np.ones((len(self.locations), len(self.directions)), float)
 
         # probabilities of correct and false values returned by sensor
         self.SENS_CORRECT = 0.9
@@ -72,11 +70,11 @@ class LocAgent:
 
         # uniform posterior over valid locations
         prob_loc = 1.0/len(self.locations)
+        self.P_loc = prob_loc * np.ones((len(self.locations), 1), np.float)
+
         # uniform posterior over valid directions
         prob_dir = 1.0/len(self.directions)
-
-        self.P_loc = prob_loc * np.ones((len(self.locations),1), np.float)
-        self.P_dir = prob_dir * np.ones((len(self.directions), 1), np.float)
+        self.P_dir = prob_dir * np.ones((len(self.locations), len(self.directions), 1), np.float)
 
 
     def __call__(self, percept, realLoc):
@@ -85,8 +83,11 @@ class LocAgent:
         # update posterior
         # TODO PUT YOUR CODE HERE
 
+        print(f"Previous action: {self.prev_action}")
+        print(f"Current percept: {percept}")
         self.updateSensorFactor(percept, realLoc)
-        self.updateTransitionFactor()
+        self.updateTransitionAndDirectionFactor()
+        self.updatePosterior()
 
 
         # -----------------------
@@ -183,14 +184,42 @@ class LocAgent:
         # print(self.sensor[realLoc_idx])
 
 
-    def updateTransitionFactor(self):
-        # if previous action was turn right or left then robot stayed in same position
-        if self.prev_action == 'turnright' or self.prev_action == 'turnleft':
+    def updateTransitionAndDirectionFactor(self):
+
+        # if previous action was turn right then robot stayed in same position but changed its direction
+        if self.prev_action == 'turnright':
             # set to zero whole Transition factor and then fill diagonal with 1
             self.T[self.T > 0] = 0
             np.fill_diagonal(self.T, 1)
-        # else if previous action was forward then robot moved to new location
+
+            # set to zero whole rotation factor and then fill diagonal with 1
+            self.D[self.D > 0] = 0
+            np.fill_diagonal(self.D, 1)
+
+            for i in range(len(self.directions)):
+                self.D[i % 4, (i+1) % 4] = self.MOVE_CORRECT
+                self.D[i % 4, i % 4] = self.MOVE_FAILED
+
+        # if previous action was turn left then robot stayed in same position but changed its direction
+        elif self.prev_action == 'turnleft':
+            # set to zero whole Transition factor and then fill diagonal with 1
+            self.T[self.T > 0] = 0
+            np.fill_diagonal(self.T, 1)
+
+            # set to zero whole rotation factor and then fill diagonal with 1
+            self.D[self.D > 0] = 0
+            np.fill_diagonal(self.D, 1)
+
+            for i in range(len(self.directions)):
+                self.D[i % 4, (i-1) % 4] = self.MOVE_CORRECT
+                self.D[i % 4, i % 4] = self.MOVE_FAILED
+
+        # else if previous action was forward then robot moved to new location but saved its direction
         else:
+            # set to zero whole rotation factor and then fill diagonal with 1 because robot didn't change direction
+            self.D[self.D > 0] = 0
+            np.fill_diagonal(self.D, 1)
+
             for loc_idx, loc in enumerate(self.locations):  # loop over each locations
                 for neigh in self.forward_neighbours:  # loop over each forward location in each direction
                     new_loc = (loc[0] + neigh[0], loc[1] + neigh[1])  # forward location in considered direction
@@ -213,6 +242,19 @@ class LocAgent:
         # print(self.T)
 
 
+    def updatePosterior(self):
+        loc_number, dir_number = self.sensor.shape
+        self.D = self.D.transpose()
+        # update posterior of direction for each location
+        for loc in range(loc_number):
+            loc_dir_sens = self.sensor[loc]
+            D_dot_Pdir = self.D.dot(self.P_dir[loc])  # help variable
+            loc_dir_sens = loc_dir_sens[:, np.newaxis]  # create new axis to match axes
+            # calculate posterior of direction for current location
+            self.P_dir[loc] = np.multiply(loc_dir_sens, D_dot_Pdir)
+            # normalize posterior of direction for current location so it sum == 1
+            self.P_dir[loc] = self.P_dir[loc]/self.P_dir[loc].sum(axis=0, keepdims=1)
+
 
     def getPosterior(self):
         # directions in order 'N', 'E', 'S', 'W'
@@ -221,9 +263,10 @@ class LocAgent:
         # put probabilities in the array
         # TODO PUT YOUR CODE HERE
         for loc_idx, loc in enumerate(self.locations):
+            # location probability
             P_arr[loc[0], loc[1]] = self.P_loc[loc_idx]
-        for dir_idx, dir_loc in enumerate(self.directions.values()):
-            P_arr[:, :, dir_idx] = self.P_dir[dir_idx]
+            # direction probability
+            P_arr[loc[0], loc[1], :] = self.P_dir[loc_idx,:, 0]
 
         # -----------------------
 
