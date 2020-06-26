@@ -35,11 +35,12 @@ class LocAgent:
         # previous action
         self.prev_action = None
 
-        # neighbours of each location (North, East, South, West)
-        self.neighbours = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+        # neighbours for each direction in percepts order (forward, right, backward, left)
+        self.directions = {'N': [(0, 1), (1, 0), (0, -1), (-1, 0)],
+                           'E': [(1, 0), (0, -1), (-1, 0), (0, 1)],
+                           'S': [(0, -1), (-1, 0), (0, 1), (1, 0)],
+                           'W': [(-1, 0), (0, 1), (1, 0), (0, -1)]}
 
-        # possible directions of robot
-        self.directions = ['N', 'E', 'S', 'W']
 
         # starting direction of robot
         self.dir = None
@@ -54,11 +55,13 @@ class LocAgent:
 
         self.P = None
 
-    def __call__(self, percept):
+    def __call__(self, percept, realLoc):
+        # TODO: delete realLoc as it is help variable
+
         # update posterior
         # TODO PUT YOUR CODE HERE
 
-        self.updateSensorFactor(percept)
+        self.updateSensorFactor(percept, realLoc)
 
 
         # -----------------------
@@ -78,47 +81,82 @@ class LocAgent:
         return action
 
 
-    def updateSensorFactor(self, percept):
+    def updateSensorFactor(self, percept, realLoc):
+        """
+        This function updates sensor factor for each possible location and direction in this location.
+
+        For example if we are in location (loc[0], loc[1]) and we are considering EAST direction and FORWARD percept
+        then we have to check if there's wall in (loc[0]+1, loc[1]), as FORWARD in this case means EAST
+
+        For example if we are in location (loc[0], loc[1]) and we are considering SOUTH direction and BACKWARD percept
+        then we have to check if there's wall in (loc[0], loc[1]+1), as BACKWARD in this case means NORTH
+        """
+        # TODO: Remember to delete realLoc as it is used only for debugging.
+
+        # reset sensor factor before updating it
         self.sensor[self.sensor>0] = 1
-        # print(self.sensor)
 
         for loc_idx, loc in enumerate(self.locations):  # loop over each location
 
-            if 'fwd' in percept:  # check if there was forward in percept
+            for dir_idx, neigh in enumerate(self.directions.values()):  # loop over each direction
+                # for current considered direction check if there's wall in percept direction.
 
-                for dir_idx, neigh in enumerate(self.neighbours):  # loop over each neighbour of current location
-                    if (loc[0] + neigh[0], loc[1] + neigh[1]) not in self.locations:
+                if 'fwd' in percept:
+                    if (loc[0] + neigh[0][0], loc[1] + neigh[0][1]) not in self.locations:
+                        # if percept was correct (Sensor detected wall in this direction and it is there)
                         self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
-                    else:   # if there's no wall on North and wall wasn't detected by percept
+                    else:
+                        # if percept was NOT correct (Sensor detected wall in this direction, but it is NOT there)
                         self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
-
-            if 'bckwd' in percept:  # check if there was backward in percept
-
-                for dir_idx, neigh in enumerate(self.neighbours):  # loop over each neighbour of current location
-                    if (loc[0] + neigh[0], loc[1] + neigh[1]) not in self.locations:
+                else:
+                    if (loc[0] + neigh[0][0], loc[1] + neigh[0][1]) not in self.locations:
+                        # if lack of percept in this direction was NOT correct
+                        # (Sensor didn't detect wall in this direction, but the wall is there)
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                    else:
+                        # if lack of percept in this direction was correct
+                        # (Sensor didn't detect wall in this direction and the wall is NOT there)
                         self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
-                    else:   # if there's no wall on North and wall wasn't detected by percept
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
 
-            if 'left' in percept:  # check if there was left in percept
-
-                for dir_idx, neigh in enumerate(self.neighbours):  # loop over each neighbour of current location
-                    if (loc[0] + neigh[0], loc[1] + neigh[1]) not in self.locations:
+                if 'right' in percept:
+                    if (loc[0] + neigh[1][0], loc[1] + neigh[1][1]) not in self.locations:
                         self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
-                    else:   # if there's no wall on North and wall wasn't detected by percept
+                    else:
                         self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
-
-
-
-            if 'right' in percept:  # check if there was right in percept
-
-                for dir_idx, neigh in enumerate(self.neighbours):  # loop over each neighbour of current location
-                    if (loc[0] + neigh[0], loc[1] + neigh[1]) not in self.locations:
+                else:
+                    if (loc[0] + neigh[1][0], loc[1] + neigh[1][1]) not in self.locations:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                    else:
                         self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
-                    else:   # if there's no wall on North and wall wasn't detected by percept
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
 
-        print(self.sensor)
+                if 'bckwd' in percept:
+                    if (loc[0] + neigh[2][0], loc[1] + neigh[2][1]) not in self.locations:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                    else:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                else:
+                    if (loc[0] + neigh[2][0], loc[1] + neigh[2][1]) not in self.locations:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                    else:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+
+                if 'left' in percept:
+                    if (loc[0] + neigh[3][0], loc[1] + neigh[3][1]) not in self.locations:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                    else:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                else:
+                    if (loc[0] + neigh[3][0], loc[1] + neigh[3][1]) not in self.locations:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                    else:
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+
+
+        # TODO: delete realLoc usage
+        realLoc_idx = self.loc_to_idx[realLoc]
+        print(percept)
+        print(self.sensor[realLoc_idx])
+
 
 
 

@@ -220,11 +220,14 @@ def main():
         print('step %d' % t)
 
         percept = env.getPercept()
-        action = agent(percept)
+
+        # TODO: DELETE passing of real agent localization
+        action = agent(percept, env.agentLoc)
+
         # get what the agent thinks of the environment
         P = agent.getPosterior()
 
-        print('Percept: ', percept)
+        # print('Percept: ', percept)
         print('Action ', action)
 
         view.update(env, P)
