@@ -87,7 +87,7 @@ class LocAgent:
         print(f"Current percept: {percept}")
         self.updateSensorFactor(percept, realLoc)
         self.updateTransitionAndDirectionFactor()
-        self.updatePosterior()
+        self.updatePosterior(realLoc)
 
 
         # -----------------------
@@ -192,7 +192,7 @@ class LocAgent:
             self.T[self.T > 0] = 0
             np.fill_diagonal(self.T, 1)
 
-            # set to zero whole rotation factor and then fill diagonal with 1
+            # set to zero whole direction factor and then fill diagonal with 1
             self.D[self.D > 0] = 0
             np.fill_diagonal(self.D, 1)
 
@@ -206,7 +206,7 @@ class LocAgent:
             self.T[self.T > 0] = 0
             np.fill_diagonal(self.T, 1)
 
-            # set to zero whole rotation factor and then fill diagonal with 1
+            # set to zero whole direction factor and then fill diagonal with 1
             self.D[self.D > 0] = 0
             np.fill_diagonal(self.D, 1)
 
@@ -216,7 +216,7 @@ class LocAgent:
 
         # else if previous action was forward then robot moved to new location but saved its direction
         else:
-            # set to zero whole rotation factor and then fill diagonal with 1 because robot didn't change direction
+            # set to zero whole direction factor and then fill diagonal with 1 because robot didn't change direction
             self.D[self.D > 0] = 0
             np.fill_diagonal(self.D, 1)
 
@@ -242,10 +242,10 @@ class LocAgent:
         # print(self.T)
 
 
-    def updatePosterior(self):
+    def updatePosterior(self, realLoc):
+        # update posterior of direction for each location
         loc_number, dir_number = self.sensor.shape
         self.D = self.D.transpose()
-        # update posterior of direction for each location
         for loc in range(loc_number):
             loc_dir_sens = self.sensor[loc]
             D_dot_Pdir = self.D.dot(self.P_dir[loc])  # help variable
@@ -254,6 +254,22 @@ class LocAgent:
             self.P_dir[loc] = np.multiply(loc_dir_sens, D_dot_Pdir)
             # normalize posterior of direction for current location so it sum == 1
             self.P_dir[loc] = self.P_dir[loc]/self.P_dir[loc].sum(axis=0, keepdims=1)
+
+
+        # update posterior of location
+        sensor_transition = np.sum(self.sensor, axis=1)
+        sensor_transition = sensor_transition[:, np.newaxis]
+        sensor_transition = sensor_transition/sensor_transition.sum(axis=0, keepdims=1)
+        self.T = self.T.transpose()
+        self.P_loc = sensor_transition * self.T.dot(self.P_loc)
+        self.P_loc = self.P_loc/self.P_loc.sum(axis=0, keepdims=1)
+
+        # for debugging purposes
+        # print(self.P_loc)
+        idx = int(np.argmax(self.P_loc))
+        print(f"Location based on posterior {self.locations[idx]}")
+        print(f"Real location {realLoc}. ONLY FOR DEBUGGING PURPOSE \n")
+
 
 
     def getPosterior(self):
