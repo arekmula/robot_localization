@@ -52,8 +52,14 @@ class LocAgent:
         # Sensor factor for each location. Each location contains four possible directions
         self.sensor = np.ones((len(self.locations), 4, 1), float)
 
+        # uniform posterior over valid locations
+        prob_loc = 1.0/len(self.locations)
+        # uniform posterior over valid directions
+        prob_dir = 1.0/len(self.directions)
 
-        self.P = None
+        self.P_loc = prob_loc * np.ones((len(self.locations),1), np.float)
+        self.P_dir = prob_dir * np.ones((len(self.directions), 1), np.float)
+
 
     def __call__(self, percept, realLoc):
         # TODO: delete realLoc as it is help variable
@@ -158,7 +164,10 @@ class LocAgent:
         print(self.sensor[realLoc_idx])
 
 
+    def updateTransitionFactor(self):
 
+
+        pass
 
 
     def getPosterior(self):
@@ -167,7 +176,11 @@ class LocAgent:
 
         # put probabilities in the array
         # TODO PUT YOUR CODE HERE
-
+        for loc_idx, loc in enumerate(self.locations):
+        #     for dir_idx, dir in enumerate(self.directions.values()):
+            P_arr[loc[0], loc[1]] = self.P_loc[loc_idx]
+        for dir_idx, dir in enumerate(self.directions.values()):
+            P_arr[:, :, dir_idx] = self.P_dir[dir_idx]
 
         # -----------------------
 
