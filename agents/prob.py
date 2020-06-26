@@ -6,6 +6,7 @@ import numpy as np
 
 from gridutil import *
 
+
 best_turn = {('N', 'E'): 'turnright',
              ('N', 'S'): 'turnright',
              ('N', 'W'): 'turnleft',
@@ -41,6 +42,10 @@ class LocAgent:
                            'S': [(0, -1), (-1, 0), (0, 1), (1, 0)],
                            'W': [(-1, 0), (0, 1), (1, 0), (0, -1)]}
 
+        # forward neighbour for each direction (N, E, S, W)
+        self.forward_neighbours = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+
+
 
         # starting direction of robot
         self.dir = None
@@ -49,8 +54,21 @@ class LocAgent:
         self.T = np.zeros((len(self.locations), len(self.locations)), float)
         np.fill_diagonal(self.T, 1)  # fill diagonal with initial probabilty that robot is there
 
+        # probabilities of correct and failed move of robot on given action
+        self.MOVE_CORRECT = 0.95
+        self.MOVE_FAILED = 0.05
+
+        # Direction Factor for each location
+        # N E S W
+        self.D = np.zeros((len(self.directions), len(self.directions)), float)
+        np.fill_diagonal(self.D, 1)  # fill diagonal with initial probabilty that robot has this direction
+
         # Sensor factor for each location. Each location contains four possible directions
-        self.sensor = np.ones((len(self.locations), 4, 1), float)
+        self.sensor = np.ones((len(self.locations), len(self.directions), 1), float)
+
+        # probabilities of correct and false values returned by sensor
+        self.SENS_CORRECT = 0.9
+        self.SENS_FALSE = 0.1
 
         # uniform posterior over valid locations
         prob_loc = 1.0/len(self.locations)
@@ -68,6 +86,7 @@ class LocAgent:
         # TODO PUT YOUR CODE HERE
 
         self.updateSensorFactor(percept, realLoc)
+        self.updateTransitionFactor()
 
 
         # -----------------------
@@ -110,64 +129,89 @@ class LocAgent:
                 if 'fwd' in percept:
                     if (loc[0] + neigh[0][0], loc[1] + neigh[0][1]) not in self.locations:
                         # if percept was correct (Sensor detected wall in this direction and it is there)
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
                     else:
                         # if percept was NOT correct (Sensor detected wall in this direction, but it is NOT there)
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                 else:
                     if (loc[0] + neigh[0][0], loc[1] + neigh[0][1]) not in self.locations:
                         # if lack of percept in this direction was NOT correct
                         # (Sensor didn't detect wall in this direction, but the wall is there)
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                     else:
                         # if lack of percept in this direction was correct
                         # (Sensor didn't detect wall in this direction and the wall is NOT there)
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
 
                 if 'right' in percept:
                     if (loc[0] + neigh[1][0], loc[1] + neigh[1][1]) not in self.locations:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
                     else:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                 else:
                     if (loc[0] + neigh[1][0], loc[1] + neigh[1][1]) not in self.locations:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                     else:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
 
                 if 'bckwd' in percept:
                     if (loc[0] + neigh[2][0], loc[1] + neigh[2][1]) not in self.locations:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
                     else:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                 else:
                     if (loc[0] + neigh[2][0], loc[1] + neigh[2][1]) not in self.locations:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                     else:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
 
                 if 'left' in percept:
                     if (loc[0] + neigh[3][0], loc[1] + neigh[3][1]) not in self.locations:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
                     else:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                 else:
                     if (loc[0] + neigh[3][0], loc[1] + neigh[3][1]) not in self.locations:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.1
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                     else:
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0.9
+                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
 
 
         # TODO: delete realLoc usage
         realLoc_idx = self.loc_to_idx[realLoc]
-        print(percept)
-        print(self.sensor[realLoc_idx])
+        # print(percept)
+        # print(self.sensor[realLoc_idx])
 
 
     def updateTransitionFactor(self):
+        # if previous action was turn right or left then robot stayed in same position
+        if self.prev_action == 'turnright' or self.prev_action == 'turnleft':
+            # set to zero whole Transition factor and then fill diagonal with 1
+            self.T[self.T > 0] = 0
+            np.fill_diagonal(self.T, 1)
+        # else if previous action was forward then robot moved to new location
+        else:
+            for loc_idx, loc in enumerate(self.locations):  # loop over each locations
+                for neigh in self.forward_neighbours:  # loop over each forward location in each direction
+                    new_loc = (loc[0] + neigh[0], loc[1] + neigh[1])  # forward location in considered direction
 
+                    # check if forward location in considered direction is not wall
+                    if new_loc in self.locations:
+                        new_loc_idx = self.loc_to_idx[new_loc]  # find new location index
+                        self.T[loc_idx, :] = 0  # set whole row to 0 before modyfing it
 
-        pass
+                        # probability that robot stayed in current location even though forward was last action
+                        self.T[loc_idx, loc_idx] = self.MOVE_FAILED
+                        # probability that robot moved to new location
+                        self.T[loc_idx, new_loc_idx] = self.MOVE_CORRECT
+                    else:
+                        # if forward location in considered direction is wall
+                        # that means that robot stayed in last location
+                        self.T[loc_idx, :] = 0
+                        self.T[loc_idx, loc_idx] = 1
+
+        # print(self.T)
+
 
 
     def getPosterior(self):
@@ -177,9 +221,8 @@ class LocAgent:
         # put probabilities in the array
         # TODO PUT YOUR CODE HERE
         for loc_idx, loc in enumerate(self.locations):
-        #     for dir_idx, dir in enumerate(self.directions.values()):
             P_arr[loc[0], loc[1]] = self.P_loc[loc_idx]
-        for dir_idx, dir in enumerate(self.directions.values()):
+        for dir_idx, dir_loc in enumerate(self.directions.values()):
             P_arr[:, :, dir_idx] = self.P_dir[dir_idx]
 
         # -----------------------
