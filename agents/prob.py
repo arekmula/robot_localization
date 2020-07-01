@@ -30,6 +30,7 @@ class LocAgent:
         self.locations = list({*locations(self.size)}.difference(self.walls))
         # dictionary from location to its index in the list
         self.loc_to_idx = {loc: idx for idx, loc in enumerate(self.locations)}
+        # print(self.loc_to_idx)
         self.eps_perc = eps_perc
         self.eps_move = eps_move
 
@@ -49,7 +50,8 @@ class LocAgent:
         self.dir = None
 
         # Transition Factor for each location.
-        self.T = np.zeros((len(self.locations), len(self.locations)), float)
+        self.T = np.zeros((len(self.locations)*len(self.directions), len(self.locations)*len(self.directions)),
+                          float)
         np.fill_diagonal(self.T, 1)  # fill diagonal with initial probabilty that robot is there
 
         # probabilities of correct and failed move of robot on given action
@@ -192,13 +194,23 @@ class LocAgent:
             self.T[self.T > 0] = 0
             np.fill_diagonal(self.T, 1)
 
-            # set to zero whole direction factor and then fill diagonal with 1
-            self.D[self.D > 0] = 0
-            np.fill_diagonal(self.D, 1)
+            for loc_idx, loc in enumerate(self.locations):
+                loc_idx_N = loc_idx * len(self.directions)  # index of NORTH direction for current location
 
-            for i in range(len(self.directions)):
-                self.D[i % 4, (i+1) % 4] = self.MOVE_CORRECT
-                self.D[i % 4, i % 4] = self.MOVE_FAILED
+                for dir_idx, direct in enumerate(self.directions):
+                    # calculate index for each direction in location
+                    loc_idx_D = loc_idx_N + dir_idx  # each location has 4 possible directions
+
+                    # calculate index for right direction in compare to last direction
+                    new_dir_idx_T = loc_idx_D + 1
+
+                    # transition from W to N direction
+                    if new_dir_idx_T > loc_idx_N + 3:
+                        new_dir_idx_T = loc_idx_N
+
+                    # set values for new direction and last direction
+                    self.T[loc_idx_D, new_dir_idx_T] = self.MOVE_CORRECT
+                    self.T[loc_idx_D, loc_idx_D] = self.MOVE_FAILED
 
         # if previous action was turn left then robot stayed in same position but changed its direction
         elif self.prev_action == 'turnleft':
@@ -206,38 +218,52 @@ class LocAgent:
             self.T[self.T > 0] = 0
             np.fill_diagonal(self.T, 1)
 
-            # set to zero whole direction factor and then fill diagonal with 1
-            self.D[self.D > 0] = 0
-            np.fill_diagonal(self.D, 1)
+            for loc_idx, loc in enumerate(self.locations):
+                loc_idx_N = loc_idx * len(self.directions)  # index of NORTH direction for current location
 
-            for i in range(len(self.directions)):
-                self.D[i % 4, (i-1) % 4] = self.MOVE_CORRECT
-                self.D[i % 4, i % 4] = self.MOVE_FAILED
+                for dir_idx, direct in enumerate(self.directions):
 
-        # else if previous action was forward then robot moved to new location but saved its direction
+                    # calculate index for each direction in location
+                    loc_idx_D = loc_idx_N + dir_idx  # each location has 4 possible directions
+
+                    # calculate index for left direction in compare to last direction
+                    new_dir_idx_T = loc_idx_D - 1
+
+                    # transition from N to E direction
+                    if new_dir_idx_T < loc_idx_N:
+                        new_dir_idx_T = loc_idx_N + 3
+
+                    # set values for new direction and last direction
+                    self.T[loc_idx_D, new_dir_idx_T] = self.MOVE_CORRECT
+                    self.T[loc_idx_D, loc_idx_D] = self.MOVE_FAILED
+
+
+        # else if previous action was forward then robot moved to new location and saved its direction
         else:
             # set to zero whole direction factor and then fill diagonal with 1 because robot didn't change direction
             self.D[self.D > 0] = 0
             np.fill_diagonal(self.D, 1)
 
-            for loc_idx, loc in enumerate(self.locations):  # loop over each locations
-                for neigh in self.forward_neighbours:  # loop over each forward location in each direction
-                    new_loc = (loc[0] + neigh[0], loc[1] + neigh[1])  # forward location in considered direction
+            for loc_idx, loc in enumerate(self.locations):
+                for dir_idx, neigh in enumerate(self.forward_neighbours):
+                    new_loc = (loc[0] + neigh[0], loc[1] + neigh[1])
 
-                    # check if forward location in considered direction is not wall
+                    # calculate index of location with direction in T matrix
+                    loc_idx_D = loc_idx * len(self.directions) + dir_idx  # each location has 4 possible directions
+
                     if new_loc in self.locations:
-                        new_loc_idx = self.loc_to_idx[new_loc]  # find new location index
-                        self.T[loc_idx, :] = 0  # set whole row to 0 before modyfing it
+                        new_loc_idx = self.loc_to_idx[new_loc] * len(self.directions) + dir_idx
+                        self.T[loc_idx_D, :] = 0  # set whole row to 0 before modyfing it
 
                         # probability that robot stayed in current location even though forward was last action
-                        self.T[loc_idx, loc_idx] = self.MOVE_FAILED
+                        self.T[loc_idx_D, loc_idx_D] = self.MOVE_FAILED
                         # probability that robot moved to new location
-                        self.T[loc_idx, new_loc_idx] = self.MOVE_CORRECT
+                        self.T[loc_idx_D, new_loc_idx] = self.MOVE_CORRECT
                     else:
                         # if forward location in considered direction is wall
                         # that means that robot stayed in last location
-                        self.T[loc_idx, :] = 0
-                        self.T[loc_idx, loc_idx] = 1
+                        self.T[loc_idx_D, :] = 0
+                        self.T[loc_idx_D, loc_idx_D] = 1
 
         # print(self.T)
 
@@ -256,19 +282,19 @@ class LocAgent:
             self.P_dir[loc] = self.P_dir[loc]/self.P_dir[loc].sum(axis=0, keepdims=1)
 
 
-        # update posterior of location
-        sensor_transition = np.sum(self.sensor, axis=1)
-        sensor_transition = sensor_transition[:, np.newaxis]
-        sensor_transition = sensor_transition/sensor_transition.sum(axis=0, keepdims=1)
-        self.T = self.T.transpose()
-        self.P_loc = sensor_transition * self.T.dot(self.P_loc)
-        self.P_loc = self.P_loc/self.P_loc.sum(axis=0, keepdims=1)
-
-        # for debugging purposes
-        # print(self.P_loc)
-        idx = int(np.argmax(self.P_loc))
-        print(f"Location based on posterior {self.locations[idx]}")
-        print(f"Real location {realLoc}. ONLY FOR DEBUGGING PURPOSE \n")
+        # # update posterior of location
+        # sensor_transition = np.sum(self.sensor, axis=1)
+        # sensor_transition = sensor_transition[:, np.newaxis]
+        # sensor_transition = sensor_transition/sensor_transition.sum(axis=0, keepdims=1)
+        # self.T = self.T.transpose()
+        # self.P_loc = sensor_transition * self.T.dot(self.P_loc)
+        # self.P_loc = self.P_loc/self.P_loc.sum(axis=0, keepdims=1)
+        #
+        # # for debugging purposes
+        # # print(self.P_loc)
+        # idx = int(np.argmax(self.P_loc))
+        # print(f"Location based on posterior {self.locations[idx]}")
+        # print(f"Real location {realLoc}. ONLY FOR DEBUGGING PURPOSE \n")
 
 
 
@@ -281,6 +307,7 @@ class LocAgent:
         for loc_idx, loc in enumerate(self.locations):
             # location probability
             P_arr[loc[0], loc[1]] = self.P_loc[loc_idx]
+            # print(P_arr[loc[0], loc[1]])
             # direction probability
             P_arr[loc[0], loc[1], :] = self.P_dir[loc_idx,:, 0]
 
