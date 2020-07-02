@@ -46,22 +46,15 @@ class LocAgent:
         # forward neighbour for each direction (N, E, S, W)
         self.forward_neighbours = [(0, 1), (1, 0), (0, -1), (-1, 0)]
 
-        # starting direction of robot
-        self.dir = None
-
         # Transition Factor for each location.
         self.T = np.zeros((len(self.locations)*len(self.directions), len(self.locations)*len(self.directions)),
                           float)
-        np.fill_diagonal(self.T, 1)  # fill diagonal with initial probabilty that robot is there
+        # fill diagonal with initial probabilty that robot is there and has this direction
+        np.fill_diagonal(self.T, 1)
 
         # probabilities of correct and failed move of robot on given action
         self.MOVE_CORRECT = 0.95
         self.MOVE_FAILED = 0.05
-
-        # Direction Factor for each location
-        # N E S W
-        self.D = np.zeros((len(self.directions), len(self.directions)), float)
-        np.fill_diagonal(self.D, 1)  # fill diagonal with initial probabilty that robot has this direction
 
         # Sensor factor for each location. Each location contains four possible directions
         self.sensor = np.ones((len(self.locations), len(self.directions)), float)
@@ -70,29 +63,18 @@ class LocAgent:
         self.SENS_CORRECT = 0.9
         self.SENS_FALSE = 0.1
 
-        # uniform posterior over valid locations
-        prob_loc = 1.0/len(self.locations)
-        self.P_loc = prob_loc * np.ones((len(self.locations), 1), np.float)
+        # uniform posterior over valid locations and directions
+        prob_loc = 1.0/(len(self.locations)*len(self.directions))
+        self.P = prob_loc * np.ones((len(self.locations) * len(self.directions), 1), np.float)
 
-        # uniform posterior over valid directions
-        prob_dir = 1.0/len(self.directions)
-        self.P_dir = prob_dir * np.ones((len(self.locations), len(self.directions), 1), np.float)
-
-
-    def __call__(self, percept, realLoc):
-        # TODO: delete realLoc as it is help variable
+    def __call__(self, percept):
 
         # update posterior
-        # TODO PUT YOUR CODE HERE
-
         print(f"Previous action: {self.prev_action}")
         print(f"Current percept: {percept}")
-        self.updateSensorFactor(percept, realLoc)
-        self.updateTransitionAndDirectionFactor()
-        self.updatePosterior(realLoc)
-
-
-        # -----------------------
+        self.update_sensor_factor(percept)
+        self.update_transition_factor()
+        self.update_posterior()
 
         action = 'forward'
         # TODO CHANGE THIS HEURISTICS TO SPEED UP CONVERGENCE
@@ -108,21 +90,21 @@ class LocAgent:
 
         return action
 
-
-    def updateSensorFactor(self, percept, realLoc):
+    def update_sensor_factor(self, percept):
         """
         This function updates sensor factor for each possible location and direction in this location.
+        Checks how many percepts are correct for each direction in each location
 
         For example if we are in location (loc[0], loc[1]) and we are considering EAST direction and FORWARD percept
         then we have to check if there's wall in (loc[0]+1, loc[1]), as FORWARD in this case means EAST
 
         For example if we are in location (loc[0], loc[1]) and we are considering SOUTH direction and BACKWARD percept
         then we have to check if there's wall in (loc[0], loc[1]+1), as BACKWARD in this case means NORTH
+
         """
-        # TODO: Remember to delete realLoc as it is used only for debugging.
 
         # reset sensor factor before updating it
-        self.sensor[self.sensor>0] = 1
+        self.sensor[self.sensor > 0] = 1
 
         for loc_idx, loc in enumerate(self.locations):  # loop over each location
 
@@ -179,15 +161,21 @@ class LocAgent:
                     else:
                         self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
 
+    def update_transition_factor(self):
+        """
+        Updates transition factor based on previous action.
 
-        # TODO: delete realLoc usage
-        realLoc_idx = self.loc_to_idx[realLoc]
-        # print(percept)
-        # print(self.sensor[realLoc_idx])
+        If robot turned then robot stayed in same position and changed its direction. For example if robot was facing
+        North direction and previous action was turn right robot is facing EAST now. That means that we have to 'pass'
+        probability from NORTH to EAST in each location with slight probability that robot failed its last action.
+        And this is happening for each direction in each location (EAST -> SOUTH etc. for turn right
+        and EAST->NORTH etc. for turn left).
 
-
-    def updateTransitionAndDirectionFactor(self):
-
+        If robot moved forward then robot changed position and had same direction. For example if robot was in location
+        (5, 9) and last action was forward we have to check if there is wall in each direction ( [5, 10] -> N,
+        [6,9] -> E, [5, 8] -> S, [4, 9] -> W) and update transition factor based on this information and slight chance
+        that robot failed its last move.
+        """
         # if previous action was turn right then robot stayed in same position but changed its direction
         if self.prev_action == 'turnright':
             # set to zero whole Transition factor and then fill diagonal with 1
@@ -237,13 +225,8 @@ class LocAgent:
                     self.T[loc_idx_D, new_dir_idx_T] = self.MOVE_CORRECT
                     self.T[loc_idx_D, loc_idx_D] = self.MOVE_FAILED
 
-
         # else if previous action was forward then robot moved to new location and saved its direction
         else:
-            # set to zero whole direction factor and then fill diagonal with 1 because robot didn't change direction
-            self.D[self.D > 0] = 0
-            np.fill_diagonal(self.D, 1)
-
             for loc_idx, loc in enumerate(self.locations):
                 for dir_idx, neigh in enumerate(self.forward_neighbours):
                     new_loc = (loc[0] + neigh[0], loc[1] + neigh[1])
@@ -265,54 +248,32 @@ class LocAgent:
                         self.T[loc_idx_D, :] = 0
                         self.T[loc_idx_D, loc_idx_D] = 1
 
-        # print(self.T)
+    def update_posterior(self):
+        """
+        Updates posterior for each location and directions in this location.
+        Based on data from sensor and transitions of robot.
+        """
+        # reshape sensor array to match transition array shape
+        sensor_reshaped = self.sensor.reshape([len(self.locations)*len(self.directions), 1])
+        # transpose transition factor
+        self.T = self.T.transpose()
+        # update posterior
+        self.P = sensor_reshaped * self.T.dot(self.P)
+        # normalize posterior so its sum = 1
+        self.P = self.P / self.P.sum(axis=0, keepdims=1)
 
-
-    def updatePosterior(self, realLoc):
-        # update posterior of direction for each location
-        loc_number, dir_number = self.sensor.shape
-        self.D = self.D.transpose()
-        for loc in range(loc_number):
-            loc_dir_sens = self.sensor[loc]
-            D_dot_Pdir = self.D.dot(self.P_dir[loc])  # help variable
-            loc_dir_sens = loc_dir_sens[:, np.newaxis]  # create new axis to match axes
-            # calculate posterior of direction for current location
-            self.P_dir[loc] = np.multiply(loc_dir_sens, D_dot_Pdir)
-            # normalize posterior of direction for current location so it sum == 1
-            self.P_dir[loc] = self.P_dir[loc]/self.P_dir[loc].sum(axis=0, keepdims=1)
-
-
-        # # update posterior of location
-        # sensor_transition = np.sum(self.sensor, axis=1)
-        # sensor_transition = sensor_transition[:, np.newaxis]
-        # sensor_transition = sensor_transition/sensor_transition.sum(axis=0, keepdims=1)
-        # self.T = self.T.transpose()
-        # self.P_loc = sensor_transition * self.T.dot(self.P_loc)
-        # self.P_loc = self.P_loc/self.P_loc.sum(axis=0, keepdims=1)
-        #
-        # # for debugging purposes
-        # # print(self.P_loc)
-        # idx = int(np.argmax(self.P_loc))
-        # print(f"Location based on posterior {self.locations[idx]}")
-        # print(f"Real location {realLoc}. ONLY FOR DEBUGGING PURPOSE \n")
-
-
-
-    def getPosterior(self):
+    def get_posterior(self):
+        """
+        returns posterior of each location and directions in this location in array form
+        """
         # directions in order 'N', 'E', 'S', 'W'
         P_arr = np.zeros([self.size, self.size, 4], dtype=np.float)
 
-        # put probabilities in the array
-        # TODO PUT YOUR CODE HERE
         for loc_idx, loc in enumerate(self.locations):
-            # location probability
-            P_arr[loc[0], loc[1]] = self.P_loc[loc_idx]
-            # print(P_arr[loc[0], loc[1]])
-            # direction probability
-            P_arr[loc[0], loc[1], :] = self.P_dir[loc_idx,:, 0]
-
-        # -----------------------
-
+            # calculate index of location with NORTH direction
+            loc_idx_N = loc_idx*len(self.directions)
+            # get probabilities for all directions in current location
+            P_arr[loc[0], loc[1], :] = self.P[loc_idx_N:loc_idx_N + 4, 0]
         return P_arr
 
     def forward(self, cur_loc, cur_dir):

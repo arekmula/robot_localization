@@ -222,13 +222,10 @@ def main():
         percept = env.getPercept()
 
         # TODO: DELETE passing of real agent localization
-        action = agent(percept, env.agentLoc)
+        action = agent(percept)
 
         # get what the agent thinks of the environment
-        P = agent.getPosterior()
-
-        # print('Percept: ', percept)
-        # print('Action ', action)
+        P = agent.get_posterior()
 
         view.update(env, P)
         update(rate)
