@@ -70,25 +70,80 @@ class LocAgent:
     def __call__(self, percept):
 
         # update posterior
-        print(f"Previous action: {self.prev_action}")
+        print(f"\n\n\nPrevious action: {self.prev_action}")
         print(f"Current percept: {percept}")
         self.update_sensor_factor(percept)
         self.update_transition_factor()
         self.update_posterior()
+        action = self.heuristic(percept)
+
+        return action
+
+    def heuristic(self, percept):
+        """
+        Returns action that drives robot in a corner while touching wall, which give us more information about
+        location probability.
+
+        When we reach 85% confidence of robot location, then robot moves in random way, not focusing on exploring
+        the world
+        """
+
+        # find index of most probable location and direction
+        loc_and_dir_idx = np.argmax(self.P[:, 0])
+        # calculate index of location
+        loc_idx = int(np.floor(loc_and_dir_idx/len(self.directions)))
+        # calculate index of direction
+        dir_idx = int(loc_and_dir_idx % len(self.directions))
+        orientations = ['N', 'E', 'S', 'W']
+
+        print(f"Most probable location: {self.locations[loc_idx]}  {orientations[dir_idx]}")
+        print(f"Probability of robot being in this location: {round(self.P[loc_and_dir_idx, 0], 3)}")
 
         action = 'forward'
-        # TODO CHANGE THIS HEURISTICS TO SPEED UP CONVERGENCE
-        # if there is a wall ahead then lets turn
-        if 'fwd' in percept:
-            # higher chance of turning left to avoid getting stuck in one location
-            action = np.random.choice(['turnleft', 'turnright'], 1, p=[0.8, 0.2])
+
+        # if we are not sure where robot is, plan robot move in a way that explore the world
+        if self.P[loc_and_dir_idx, 0] < 0.85:
+            if percept is not None:
+                if 'fwd' in percept:
+                    # if there's wall in front and on the left then turn right
+                    if 'left' in percept and 'right' not in percept:
+                        action = 'turnright'
+                    # if there's wall in front and on the right then turn left
+                    elif 'left' not in percept and 'right' in percept:
+                        action = 'turnleft'
+                    # if there's wall only in front then turn left or right
+                    # to force robot to move while touching wall
+                    else:
+                        action = np.random.choice(['turnleft', 'turnright'], 1, p=[0.5, 0.5])
+                # force robot to move while touching wall
+                elif 'right' in percept or 'left' in percept:
+                    action = 'forward'
+                # if there's wall in our back then turn right or turn left to touch wall
+                else:
+                    action = np.random.choice(['turnleft', 'turnright'], 1, p=[0.5, 0.5])
+            # if there's no percepts force robot to move forward
+            else:
+                print("NO PERCEPTS")
+                action = 'forward'
+        # heuristic when we are sure where robot is. Some random moves
         else:
-            # prefer moving forward to explore
-            action = np.random.choice(['forward', 'turnleft', 'turnright'], 1, p=[0.8, 0.1, 0.1])
+            print("JUST MOVE")
+            # if there is a wall ahead then lets turn
+            if 'fwd' in percept:
+                if 'left' in percept and 'right' not in percept:
+                    action = 'turnright'
+                elif 'left' not in percept and 'right' in percept:
+                    action = 'turnleft'
+                else:
+                    action = np.random.choice(['turnleft', 'turnright'], 1, p=[0.5, 0.5])
+            else:
+                # prefer moving forward to explore
+                action = np.random.choice(['forward', 'turnleft', 'turnright'], 1, p=[0.95, 0.025, 0.025])
 
         self.prev_action = action
 
         return action
+
 
     def update_sensor_factor(self, percept):
         """
