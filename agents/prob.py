@@ -30,9 +30,6 @@ class LocAgent:
         self.locations = list({*locations(self.size)}.difference(self.walls))
         # dictionary from location to its index in the list
         self.loc_to_idx = {loc: idx for idx, loc in enumerate(self.locations)}
-        # print(self.loc_to_idx)
-        self.eps_perc = eps_perc
-        self.eps_move = eps_move
 
         # previous action
         self.prev_action = None
@@ -53,15 +50,16 @@ class LocAgent:
         np.fill_diagonal(self.T, 1)
 
         # probabilities of correct and failed move of robot on given action
-        self.MOVE_CORRECT = 0.95
-        self.MOVE_FAILED = 0.05
+        self.MOVE_CORRECT = 1-eps_move
+        self.MOVE_FAILED = eps_move
 
         # Sensor factor for each location. Each location contains four possible directions
         self.sensor = np.ones((len(self.locations), len(self.directions)), float)
 
         # probabilities of correct and false values returned by sensor
-        self.SENS_CORRECT = 0.9
-        self.SENS_FALSE = 0.1
+        self.SENS_CORRECT = 1-eps_perc
+        self.SENS_FALSE = eps_perc
+        self.SENS_BUMP = 1
 
         # uniform posterior over valid locations and directions
         prob_loc = 1.0/(len(self.locations)*len(self.directions))
@@ -84,7 +82,7 @@ class LocAgent:
         Returns action that drives robot in a corner while touching wall, which give us more information about
         location probability.
 
-        When we reach 85% confidence of robot location, then robot moves in random way, not focusing on exploring
+        When we reach 85% confidence of robot location, then robot moves in a random way, not focusing on exploring
         the world
         """
 
@@ -148,7 +146,8 @@ class LocAgent:
     def update_sensor_factor(self, percept):
         """
         This function updates sensor factor for each possible location and direction in this location.
-        Checks how many percepts are correct for each direction in each location
+        Checks how many percepts are correct for each direction in each location. Sensor might return false values
+        sometimes so we have to consider that.
 
         For example if we are in location (loc[0], loc[1]) and we are considering EAST direction and FORWARD percept
         then we have to check if there's wall in (loc[0]+1, loc[1]), as FORWARD in this case means EAST
@@ -168,16 +167,25 @@ class LocAgent:
 
                 if 'fwd' in percept:
                     if (loc[0] + neigh[0][0], loc[1] + neigh[0][1]) not in self.locations:
-                        # if percept was correct (Sensor detected wall in this direction and it is there)
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
+                        if 'bump' in percept:
+                            # if bump was detected, that means that this sensor reading was 100% correct
+                            self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_BUMP
+                        else:
+                            # if percept was correct (Sensor detected wall in this direction and it is there)
+                            self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_CORRECT
                     else:
                         # if percept was NOT correct (Sensor detected wall in this direction, but it is NOT there)
                         self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                 else:
                     if (loc[0] + neigh[0][0], loc[1] + neigh[0][1]) not in self.locations:
-                        # if lack of percept in this direction was NOT correct
-                        # (Sensor didn't detect wall in this direction, but the wall is there)
-                        self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
+                        if 'bump' in percept:
+                            # if bump was detected and sensor returned nothing in forward direction that means that this
+                            # sensor reading is 100% false
+                            self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * 0
+                        else:
+                            # if lack of percept in this direction was NOT correct
+                            # (Sensor didn't detect wall in this direction, but the wall is there)
+                            self.sensor[loc_idx, dir_idx] = self.sensor[loc_idx, dir_idx] * self.SENS_FALSE
                     else:
                         # if lack of percept in this direction was correct
                         # (Sensor didn't detect wall in this direction and the wall is NOT there)
