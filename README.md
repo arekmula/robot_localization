@@ -1,5 +1,7 @@
 # lokalizacja
 
+![Final](https://i.imgur.com/4BcXcRd.png)
+
 # Project goals:
 - write a code that estimates probability distribution of robot's localization.
 - modify robot's heuristic to speed up estimation of robot's localization. Robot should choose actions that give him more information about environment.
