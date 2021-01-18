@@ -1,4 +1,4 @@
-# lokalizacja
+# Robot localization
 
 ![Final](https://i.imgur.com/4BcXcRd.png)
 
@@ -11,6 +11,9 @@
 - Robot isn't rotating and moving forward correctly everytime. There's a chance (**0.05**) that robot will stay in the same position when the last command was 'forward' or that robot will not rotate when the last command was 'turnleft' or 'turnright'.
 - Robot's sensors give us information when obstacles were detected. But they **aren't perfect** and give us wrong information. There's a chance (**0.1**) that sensors will give us wrong information - detects an obstacle when it is not there or not detect an obstacle when it is there.
 
+# Project requirements:
+- Python 3.6 (might as well work with all of Python3 versions)
+- listed in `requirements.txt`
 
 # How it works?
 

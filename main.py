@@ -221,7 +221,6 @@ def main():
 
         percept = env.getPercept()
 
-        # TODO: DELETE passing of real agent localization
         action = agent(percept)
 
         # get what the agent thinks of the environment
